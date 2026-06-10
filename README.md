@@ -18,6 +18,12 @@ RecipeGenAI accepts user ingredients, cuisine preference, dietary restrictions, 
 - Step-by-step cooking instructions
 - Cooking tips and serving suggestions
 - Shopping list and ingredient substitution suggestions
+- **AI-generated recipe images**
+- **English & Kannada** multi-language support
+- **User authentication** with JWT
+- **Agent memory** for personalized preferences
+- **Parallel agent execution** for faster responses
+- **Voice input** for ingredients (browser Web Speech API)
 
 ---
 
@@ -41,22 +47,26 @@ flowchart TB
         START((START))
         A1[Ingredient Analyzer Agent]
         A2[Recipe Finder Agent]
-        A3[Nutrition Agent]
-        A4[Cooking Instruction Agent]
+        PARALLEL[Parallel: Nutrition + Cooking + Image]
         BUILD[Build Final Response]
         END_NODE((END))
     end
 
     subgraph External["External Services"]
         GROQ[Groq API]
+        IMG[Pollinations AI Images]
+        DB[(SQLite + Auth)]
     end
 
     UI --> API_CLIENT
     API_CLIENT --> ENDPOINT
     ENDPOINT --> MAS
+    ENDPOINT --> DB
     MAS --> START
-    START --> A1 --> A2 --> A3 --> A4 --> BUILD --> END_NODE
-    A1 & A2 & A3 & A4 --> GROQ
+    START --> A1 --> A2 --> PARALLEL --> BUILD --> END_NODE
+    A1 & A2 --> GROQ
+    PARALLEL --> GROQ
+    PARALLEL --> IMG
     UI --> STORAGE
     UI --> PDF
 ```
@@ -71,7 +81,9 @@ flowchart TB
 | **2. Recipe Finder** | Match cuisine/diet, select best recipe, find missing items | `ingredient_analysis` | `recipe_name`, `required_ingredients`, `missing_ingredients` |
 | **3. Nutrition Agent** | Estimate macros and calories | Recipe data | `nutrition` |
 | **4. Cooking Instruction** | Generate steps, tips, serving ideas | Recipe data | `instructions`, `tips`, `serving_suggestions` |
+| **5. Image Generation** | Generate recipe food photo URL | Recipe name + cuisine | `image_url` |
 
+Agents 3–5 run **in parallel** after Recipe Finder for faster responses.
 All agents share a common **`RecipeState`** TypedDict managed by LangGraph `StateGraph`.
 
 ---
@@ -83,7 +95,8 @@ All agents share a common **`RecipeState`** TypedDict managed by LangGraph `Stat
 | **AI / Orchestration** | LangChain, LangGraph, Groq |
 | **Backend** | Python, FastAPI, Pydantic, Uvicorn |
 | **Frontend** | React, Vite, Axios, Tailwind CSS |
-| **Bonus** | LocalStorage, jsPDF |
+| **Auth** | JWT, bcrypt, SQLite |
+| **Bonus** | LocalStorage, jsPDF, Web Speech API, i18n (en/kn) |
 
 ---
 
@@ -154,6 +167,8 @@ cp .env.example .env              # optional
 |----------|----------|-------------|
 | `GROQ_API_KEY` | Yes | Groq API key |
 | `GROQ_MODEL` | No | Model name (default: `llama-3.3-70b-versatile`) |
+| `JWT_SECRET_KEY` | Yes (prod) | Secret for signing auth tokens |
+| `JWT_EXPIRE_MINUTES` | No | Token expiry (default: `10080`) |
 
 ### Frontend (`frontend/.env`)
 
@@ -254,17 +269,32 @@ Interactive prompts for ingredients, cuisine, diet, and cooking time.
 
 ---
 
+## New Features (v2.0)
+
+| Feature | How to use |
+|---------|-----------|
+| **User Auth** | Click Login → Register/Login. Enables agent memory. |
+| **Agent Memory** | Logged-in users get personalized recipes based on past preferences. |
+| **Image Generation** | Auto-generated food photo shown with each recipe. |
+| **Voice Input** | Click 🎤 on ingredients field (Chrome/Edge recommended). |
+| **Multi-language** | Select English or ಕನ್ನಡ in the form — recipe content is generated in that language. |
+| **Parallel Agents** | Nutrition + Cooking + Image run simultaneously after Recipe Finder. |
+
+### Auth API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/register` | Create account |
+| POST | `/auth/login` | Get JWT token |
+| GET | `/auth/me` | Current user (requires token) |
+| GET | `/auth/memory` | User preference memory (requires token) |
+
 ## Future Enhancements
 
-- User authentication and cloud recipe storage
-- Image generation for recipes
-- Voice input for ingredients
-- Multi-language support
+- Cloud recipe storage
 - Ingredient barcode scanning
 - Meal planning calendar
-- Integration with grocery delivery APIs
-- Agent memory for personalized preferences
-- Parallel agent execution for faster responses
+- Grocery delivery API integration
 - Recipe rating and feedback loop
 
 ---
