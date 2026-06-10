@@ -32,6 +32,7 @@ from auth import (
 from database import init_db
 from memory import get_user_memory, update_user_memory
 from multi_agent_system import get_llm, run_recipe_workflow
+from translate import translate_recipe_content
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -112,6 +113,27 @@ class RecipeResponse(BaseModel):
     language: str = "en"
     personalized: bool = False
     error: str | None = None
+
+
+class TranslateRequest(BaseModel):
+    recipe_name: str = ""
+    description: str = ""
+    ingredients: list[str] = Field(default_factory=list)
+    instructions: list[str] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
+    serving_suggestions: list[str] = Field(default_factory=list)
+    source_language: Literal["en", "kn"] = "en"
+    target_language: Literal["en", "kn"] = "kn"
+
+
+class TranslateResponse(BaseModel):
+    recipe_name: str = ""
+    description: str = ""
+    ingredients: list[str] = Field(default_factory=list)
+    instructions: list[str] = Field(default_factory=list)
+    tips: list[str] = Field(default_factory=list)
+    serving_suggestions: list[str] = Field(default_factory=list)
+    language: str = "en"
 
 
 class HealthResponse(BaseModel):
@@ -281,6 +303,41 @@ async def generate_recipe(
         language=result.get("language", request.language),
         personalized=bool(user),
     )
+
+
+@app.post("/translate-recipe", response_model=TranslateResponse, tags=["Recipe"])
+async def translate_recipe(request: TranslateRequest) -> TranslateResponse:
+    """Translate recipe text between English and Kannada for display and voice."""
+    if request.source_language == request.target_language:
+        return TranslateResponse(
+            recipe_name=request.recipe_name,
+            description=request.description,
+            ingredients=request.ingredients,
+            instructions=request.instructions,
+            tips=request.tips,
+            serving_suggestions=request.serving_suggestions,
+            language=request.target_language,
+        )
+
+    try:
+        result = translate_recipe_content(
+            recipe_name=request.recipe_name,
+            description=request.description,
+            ingredients=request.ingredients,
+            instructions=request.instructions,
+            tips=request.tips,
+            serving_suggestions=request.serving_suggestions,
+            source_language=request.source_language,
+            target_language=request.target_language,
+        )
+    except Exception as exc:
+        logger.exception("Translation failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Translation failed: {exc}",
+        ) from exc
+
+    return TranslateResponse(**result, language=request.target_language)
 
 
 @app.get("/", tags=["Root"])

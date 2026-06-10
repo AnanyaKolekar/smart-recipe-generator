@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../context/LanguageContext'
+import { translateRecipeContent } from '../services/api'
 import NutritionCard from './NutritionCard'
 import RecipeImage from './RecipeImage'
 import VoiceCookingAgent from './VoiceCookingAgent'
@@ -31,13 +32,69 @@ function ListSection({ title, items, icon, variant = 'default' }) {
 }
 
 export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
-  const { t, language } = useLanguage()
+  const { t } = useLanguage()
   const [activeStep, setActiveStep] = useState(-1)
-  if (!recipe) return null
+  const [viewLang, setViewLang] = useState(recipe?.language || 'en')
+  const [translating, setTranslating] = useState(false)
+  const [displayRecipe, setDisplayRecipe] = useState(recipe)
+  const cacheRef = useRef({})
+
+  const originalLang = recipe?.language || 'en'
+
+  const loadLanguage = async (lang) => {
+    if (!recipe) return
+
+    if (lang === originalLang) {
+      setDisplayRecipe(recipe)
+      return
+    }
+
+    if (cacheRef.current[lang]) {
+      setDisplayRecipe({ ...recipe, ...cacheRef.current[lang], language: lang })
+      return
+    }
+
+    setTranslating(true)
+    try {
+      const translated = await translateRecipeContent({
+        recipe_name: recipe.recipe_name,
+        description: recipe.description,
+        ingredients: recipe.ingredients,
+        instructions: recipe.instructions,
+        tips: recipe.tips,
+        serving_suggestions: recipe.serving_suggestions,
+        source_language: originalLang,
+        target_language: lang,
+      })
+      cacheRef.current[lang] = translated
+      setDisplayRecipe({ ...recipe, ...translated, language: lang })
+    } catch {
+      setDisplayRecipe(recipe)
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!recipe) return
+    const lang = recipe.language || 'en'
+    setViewLang(lang)
+    cacheRef.current = {}
+    setDisplayRecipe(recipe)
+    setActiveStep(-1)
+  }, [recipe])
+
+  const handleViewLangChange = async (lang) => {
+    setViewLang(lang)
+    setActiveStep(-1)
+    await loadLanguage(lang)
+  }
+
+  if (!recipe || !displayRecipe) return null
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      <RecipeImage imageUrl={recipe.image_url} recipeName={recipe.recipe_name} />
+      <RecipeImage imageUrl={recipe.image_url} recipeName={displayRecipe.recipe_name} />
 
       <div className="bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl p-6 sm:p-8 text-white shadow-xl shadow-brand-200">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -51,10 +108,10 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
               )}
             </p>
             <h2 className="font-display text-2xl sm:text-3xl font-bold">
-              {recipe.recipe_name}
+              {displayRecipe.recipe_name}
             </h2>
             <p className="text-brand-50 mt-3 leading-relaxed max-w-2xl">
-              {recipe.description}
+              {displayRecipe.description}
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -78,7 +135,11 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ListSection title={t('ingredientsList')} items={recipe.ingredients} icon="🥗" />
+        <ListSection
+          title={t('ingredientsList')}
+          items={displayRecipe.ingredients}
+          icon="🥗"
+        />
         <ListSection
           title={t('missingIngredients')}
           items={recipe.missing_ingredients}
@@ -99,21 +160,30 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
 
       <NutritionCard nutrition={recipe.nutrition} />
 
-      {recipe.instructions?.length > 0 && (
-        <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm">
-          <h3 className="font-display text-lg font-semibold text-ink mb-4 flex items-center gap-2">
+      {displayRecipe.instructions?.length > 0 && (
+        <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm space-y-5">
+          <h3 className="font-display text-lg font-semibold text-ink flex items-center gap-2">
             <span>👨‍🍳</span> {t('instructions')}
           </h3>
 
           <VoiceCookingAgent
-            recipeName={recipe.recipe_name}
-            instructions={recipe.instructions}
-            language={recipe.language || language}
+            recipeName={displayRecipe.recipe_name}
+            instructions={displayRecipe.instructions}
+            voiceLang={viewLang}
+            onVoiceLangChange={handleViewLangChange}
+            translating={translating}
             onStepChange={setActiveStep}
           />
 
-          <ol className="space-y-4 mt-4">
-            {recipe.instructions.map((step, i) => (
+          {translating && (
+            <p className="text-sm text-violet-600 flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin-slow" />
+              {t('translating')}
+            </p>
+          )}
+
+          <ol className="space-y-4">
+            {displayRecipe.instructions.map((step, i) => (
               <li
                 key={i}
                 className={`flex gap-4 rounded-xl p-2 transition-colors ${
@@ -137,8 +207,12 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ListSection title={t('tips')} items={recipe.tips} icon="💡" variant="info" />
-        <ListSection title={t('serving')} items={recipe.serving_suggestions} icon="🍽️" />
+        <ListSection title={t('tips')} items={displayRecipe.tips} icon="💡" variant="info" />
+        <ListSection
+          title={t('serving')}
+          items={displayRecipe.serving_suggestions}
+          icon="🍽️"
+        />
       </div>
     </div>
   )

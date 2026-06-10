@@ -348,6 +348,7 @@ def image_generation_agent(state: RecipeState) -> RecipeState:
             recipe_name=state.get("recipe_name", ""),
             cuisine=state.get("cuisine", ""),
             description=state.get("recipe_description", ""),
+            ingredients=state.get("required_ingredients", []),
         )
         return {"image_url": url}
     except Exception as exc:
@@ -422,6 +423,7 @@ def build_final_response(state: RecipeState) -> RecipeState:
             recipe_name=state.get("recipe_name", ""),
             cuisine=state.get("cuisine", ""),
             description=state.get("recipe_description", ""),
+            ingredients=state.get("required_ingredients", []),
         )
 
     final = {

@@ -48,4 +48,12 @@ export async function checkHealth() {
   return response.data
 }
 
+/**
+ * Translate recipe content between English and Kannada.
+ */
+export async function translateRecipeContent(payload) {
+  const response = await apiClient.post('/translate-recipe', payload)
+  return response.data
+}
+
 export default apiClient
