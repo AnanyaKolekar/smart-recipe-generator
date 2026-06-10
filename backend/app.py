@@ -33,7 +33,7 @@ from database import init_db
 from memory import get_user_memory, update_user_memory
 from multi_agent_system import get_llm, run_recipe_workflow
 from translate import translate_recipe_content
-from tts import synthesize_speech_base64
+from tts import synthesize_speech_base64_async
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class RecipeRequest(BaseModel):
         description="Comma-separated list of available ingredients",
         examples=["tomato, onion, paneer, garlic"],
     )
-    cuisine: str = Field(default="Indian", examples=["Indian"])
+    cuisine: str = Field(default="South Indian", examples=["South Indian"])
     diet: str = Field(default="Vegetarian", examples=["Vegetarian"])
     cooking_time: str = Field(default="30", examples=["30"])
     language: Literal["en", "kn"] = Field(
@@ -91,7 +91,7 @@ class NutritionInfo(BaseModel):
 
 
 class UserMemoryResponse(BaseModel):
-    preferred_cuisine: str = "Indian"
+    preferred_cuisine: str = "South Indian"
     preferred_diet: str = "Vegetarian"
     preferred_language: str = "en"
     favorite_ingredients: list[str] = Field(default_factory=list)
@@ -362,9 +362,11 @@ async def translate_recipe(request: TranslateRequest) -> TranslateResponse:
 
 @app.post("/synthesize-speech", response_model=TTSResponse, tags=["Recipe"])
 async def synthesize_speech(request: TTSRequest) -> TTSResponse:
-    """Synthesize speech with Indian English or Kannada accent via Google TTS."""
+    """Synthesize speech with native Indian English or Kannada neural voices."""
     try:
-        audio_base64 = synthesize_speech_base64(request.text, request.language)
+        audio_base64 = await synthesize_speech_base64_async(
+            request.text, request.language
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

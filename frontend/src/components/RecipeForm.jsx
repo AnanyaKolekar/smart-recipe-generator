@@ -2,7 +2,7 @@ import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
 import VoiceInput from './VoiceInput'
 
-const CUISINES = ['Indian', 'Italian', 'Chinese', 'Mexican', 'Continental']
+const CUISINES = ['South Indian', 'North Indian', 'Mexican', 'Chinese']
 const DIETS = ['Vegetarian', 'Vegan', 'Non Vegetarian', 'Keto']
 const COOKING_TIMES = [
   { label: '15 min', value: '15' },

@@ -1,14 +1,27 @@
-"""Text-to-speech with Indian English and Kannada using Google TTS."""
+"""Text-to-speech with authentic Indian English and Kannada neural voices."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import logging
 import re
 
-from gtts import gTTS
+import edge_tts
+
+logger = logging.getLogger(__name__)
 
 MAX_TTS_CHARS = 4500
+
+# Microsoft Edge neural voices — native en-IN / kn-IN Indian accents
+INDIAN_VOICES: dict[str, str] = {
+    "en": "en-IN-NeerjaNeural",
+    "kn": "kn-IN-SapnaNeural",
+}
+
+# Slightly slower pace for clearer cooking-step narration
+SPEECH_RATE = "-8%"
 
 
 def _clean_text(text: str) -> str:
@@ -16,13 +29,30 @@ def _clean_text(text: str) -> str:
     return cleaned[:MAX_TTS_CHARS]
 
 
-def synthesize_speech_base64(text: str, language: str = "en") -> str:
+def _voice_for_language(language: str) -> str:
+    return INDIAN_VOICES.get(language, INDIAN_VOICES["en"])
+
+
+async def _synthesize_edge_tts(text: str, language: str) -> bytes:
+    voice = _voice_for_language(language)
+    communicate = edge_tts.Communicate(text, voice, rate=SPEECH_RATE)
+    buffer = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            buffer.write(chunk["data"])
+    audio = buffer.getvalue()
+    if not audio:
+        raise ValueError("Speech synthesis returned empty audio")
+    return audio
+
+
+async def synthesize_speech_base64_async(text: str, language: str = "en") -> str:
     """
     Synthesize speech and return base64-encoded MP3.
 
     Args:
         text: Text to speak.
-        language: 'en' for Indian English, 'kn' for Kannada.
+        language: 'en' for Indian English (en-IN), 'kn' for Kannada (kn-IN).
 
     Returns:
         Base64 string of MP3 audio bytes.
@@ -31,13 +61,11 @@ def synthesize_speech_base64(text: str, language: str = "en") -> str:
     if not cleaned:
         raise ValueError("Text for speech synthesis cannot be empty")
 
-    if language == "kn":
-        tts = gTTS(text=cleaned, lang="kn", slow=False)
-    else:
-        # tld=co.in gives Indian English accent
-        tts = gTTS(text=cleaned, lang="en", tld="co.in", slow=False)
+    logger.info("Synthesizing %s speech with %s", language, _voice_for_language(language))
+    audio_bytes = await _synthesize_edge_tts(cleaned, language)
+    return base64.b64encode(audio_bytes).decode("utf-8")
 
-    buffer = io.BytesIO()
-    tts.write_to_fp(buffer)
-    buffer.seek(0)
-    return base64.b64encode(buffer.read()).decode("utf-8")
+
+def synthesize_speech_base64(text: str, language: str = "en") -> str:
+    """Sync wrapper for callers that are not async."""
+    return asyncio.run(synthesize_speech_base64_async(text, language))

@@ -29,6 +29,30 @@ LANGUAGE_NAMES = {
     "kn": "Kannada (ಕನ್ನಡ)",
 }
 
+SUPPORTED_CUISINES = ("South Indian", "North Indian", "Mexican", "Chinese")
+
+CUISINE_GUIDANCE: dict[str, str] = {
+    "South Indian": (
+        "South Indian cuisine only: dosa, idli, vada, uttapam, sambar, rasam, "
+        "upma, pongal, avial, coconut chutney, lemon rice, bisibele bath, "
+        "Karnataka/Kerala/Tamil/Telugu regional dishes."
+    ),
+    "North Indian": (
+        "North Indian cuisine only: roti, naan, paratha, dal, paneer dishes, "
+        "chole, rajma, butter chicken, tandoori, pulao, biryani, Punjabi and "
+        "Mughlai-style curries."
+    ),
+    "Mexican": (
+        "Mexican cuisine only: tacos, burritos, enchiladas, quesadillas, fajitas, "
+        "salsa, guacamole, beans, corn tortillas, lime, cilantro, jalapeño."
+    ),
+    "Chinese": (
+        "Chinese cuisine only: stir-fry, fried rice, chow mein, dumplings, "
+        "manchurian, steamed dishes, soy sauce, ginger, garlic, Sichuan or "
+        "Cantonese-style flavors."
+    ),
+}
+
 
 def _load_env() -> None:
     """Load .env and always prefer values from the file over stale process env."""
@@ -111,6 +135,14 @@ def _lang_instruction(language: str) -> str:
             "and serving suggestions MUST be written in Kannada script (ಕನ್ನಡ)."
         )
     return f"\n\nRespond in {name}."
+
+
+def _cuisine_guidance(cuisine: str) -> str:
+    """Return cuisine-specific instructions for recipe agents."""
+    key = cuisine.strip()
+    if key in CUISINE_GUIDANCE:
+        return f"\n\nCUISINE REQUIREMENT: {CUISINE_GUIDANCE[key]}"
+    return f"\n\nCUISINE REQUIREMENT: Prepare an authentic {key} recipe."
 
 
 def _nutrition_lang_note(language: str) -> str:
@@ -199,7 +231,7 @@ Maximum cooking time: {state.get('cooking_time', '30')} minutes
 
 {memory_ctx}
 
-Analyze these ingredients thoroughly.{_lang_instruction(lang)}"""
+Analyze these ingredients thoroughly.{_cuisine_guidance(state.get('cuisine', ''))}{_lang_instruction(lang)}"""
 
     try:
         analysis = _invoke_agent(INGREDIENT_ANALYZER_PROMPT, user_prompt)
@@ -227,7 +259,8 @@ Return ONLY valid JSON with this exact structure:
   "shopping_list": ["organized shopping list for missing + staple items"]
 }
 
-Match cuisine and dietary preferences strictly. Respect the cooking time limit."""
+Match the selected cuisine style strictly — the recipe must clearly belong to that cuisine.
+Respect dietary preferences and the cooking time limit."""
 
 
 def recipe_finder_agent(state: RecipeState) -> RecipeState:
@@ -249,7 +282,7 @@ Max cooking time: {state.get('cooking_time', '30')} minutes
 
 {memory_ctx}
 
-Select the best recipe and identify missing ingredients.{_lang_instruction(lang)}"""
+Select the best recipe and identify missing ingredients.{_cuisine_guidance(state.get('cuisine', ''))}{_lang_instruction(lang)}"""
 
     try:
         result = _invoke_agent(RECIPE_FINDER_PROMPT, user_prompt)
@@ -347,7 +380,7 @@ Cuisine: {state.get('cuisine', 'Any')}
 Diet: {state.get('diet', 'Any')}
 Max cooking time: {state.get('cooking_time', '30')} minutes
 
-Generate complete cooking instructions.{_lang_instruction(lang)}"""
+Generate complete cooking instructions.{_cuisine_guidance(state.get('cuisine', ''))}{_lang_instruction(lang)}"""
 
     try:
         result = _invoke_agent(COOKING_INSTRUCTION_PROMPT, user_prompt)
@@ -578,7 +611,8 @@ def main() -> None:
     print()
 
     ingredients = input("Enter ingredients (comma-separated): ").strip()
-    cuisine = input("Enter cuisine: ").strip()
+    print("Cuisine options: South Indian, North Indian, Mexican, Chinese")
+    cuisine = input("Enter cuisine [South Indian]: ").strip() or "South Indian"
     diet = input("Enter dietary preference: ").strip()
     cooking_time = input("Enter cooking time (minutes): ").strip()
     language = input("Enter language (en/kn) [en]: ").strip() or "en"

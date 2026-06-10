@@ -11,20 +11,23 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+def _normalize_cuisine(cuisine: str) -> str:
+    """Normalize cuisine label for lookup (handles hyphens and casing)."""
+    return cuisine.lower().replace("-", " ").strip()
+
+
 CUISINE_AREA_MAP: dict[str, str] = {
-    "indian": "Indian",
-    "italian": "Italian",
-    "chinese": "Chinese",
+    "south indian": "Indian",
+    "north indian": "Indian",
     "mexican": "Mexican",
-    "continental": "British",
+    "chinese": "Chinese",
 }
 
 CUISINE_FOODISH_MAP: dict[str, str] = {
-    "indian": "biryani",
-    "italian": "pasta",
-    "chinese": "samosa",
+    "south indian": "dosa",
+    "north indian": "biryani",
     "mexican": "burger",
-    "continental": "pizza",
+    "chinese": "samosa",
 }
 
 # Keywords in recipe name → Foodish category for better visual match
@@ -134,7 +137,7 @@ def _best_themealdb_match(recipe_name: str) -> str | None:
 
 def _themealdb_by_cuisine(recipe_name: str, cuisine: str) -> str | None:
     """Pick a unique meal from TheMealDB cuisine filter using recipe hash."""
-    area = CUISINE_AREA_MAP.get(cuisine.lower().strip())
+    area = CUISINE_AREA_MAP.get(_normalize_cuisine(cuisine))
     if not area:
         return None
 
@@ -171,7 +174,7 @@ def _detect_foodish_category(recipe_name: str, cuisine: str, ingredients: list[s
     for keyword, category in KEYWORD_CATEGORY_MAP.items():
         if keyword in combined:
             return category
-    return CUISINE_FOODISH_MAP.get(cuisine.lower().strip(), "biryani")
+    return CUISINE_FOODISH_MAP.get(_normalize_cuisine(cuisine), "biryani")
 
 
 def _foodish_url(recipe_name: str, cuisine: str, ingredients: list[str] | None = None) -> str:

@@ -11,7 +11,7 @@ function stopCurrentAudio() {
 }
 
 /**
- * Speak text using backend Google TTS (Indian English or Kannada).
+ * Speak text using backend neural Indian voices (en-IN / kn-IN).
  * @returns {Promise<void>}
  */
 export async function speakWithIndianTTS(text, language = 'en') {

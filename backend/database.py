@@ -31,7 +31,7 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS user_preferences (
                 user_id INTEGER PRIMARY KEY,
-                preferred_cuisine TEXT DEFAULT 'Indian',
+                preferred_cuisine TEXT DEFAULT 'South Indian',
                 preferred_diet TEXT DEFAULT 'Vegetarian',
                 preferred_language TEXT DEFAULT 'en',
                 favorite_ingredients TEXT DEFAULT '[]',

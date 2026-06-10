@@ -57,7 +57,7 @@ export async function translateRecipeContent(payload) {
 }
 
 /**
- * Synthesize speech with Indian English or Kannada accent.
+ * Synthesize speech with native Indian English or Kannada neural voices.
  */
 export async function synthesizeSpeech(payload) {
   const response = await apiClient.post('/synthesize-speech', payload, {

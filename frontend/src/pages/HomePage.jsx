@@ -23,7 +23,7 @@ export default function HomePage({ activeTab, onTabChange }) {
 
   const [formData, setFormData] = useState({
     ingredients: '',
-    cuisine: 'Indian',
+    cuisine: 'South Indian',
     diet: 'Vegetarian',
     cooking_time: '30',
     language,

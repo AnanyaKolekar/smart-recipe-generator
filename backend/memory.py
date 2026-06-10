@@ -29,7 +29,7 @@ def get_user_memory(user_id: int) -> dict[str, Any]:
 
     prefs = row_to_dict(row) or {}
     return {
-        "preferred_cuisine": prefs.get("preferred_cuisine", "Indian"),
+        "preferred_cuisine": prefs.get("preferred_cuisine", "South Indian"),
         "preferred_diet": prefs.get("preferred_diet", "Vegetarian"),
         "preferred_language": prefs.get("preferred_language", "en"),
         "favorite_ingredients": _parse_json_list(prefs.get("favorite_ingredients")),
@@ -76,7 +76,7 @@ def update_user_memory(
             WHERE user_id = ?
             """,
             (
-                cuisine or memory.get("preferred_cuisine", "Indian"),
+                cuisine or memory.get("preferred_cuisine", "South Indian"),
                 diet or memory.get("preferred_diet", "Vegetarian"),
                 language or memory.get("preferred_language", "en"),
                 json.dumps(sorted(fav)[-30:]),
