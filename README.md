@@ -2,10 +2,6 @@
 
 A production-ready, end-to-end AI application where **4 specialized agents** collaborate via **LangGraph** to generate personalized recipes from your available ingredients and preferences.
 
-![RecipeGenAI](https://via.placeholder.com/800x400?text=RecipeGenAI+Screenshot)
-
-> Replace the placeholder above with a screenshot after running the app.
-
 ---
 
 ## Project Overview
@@ -261,6 +257,3 @@ Interactive prompts for ingredients, cuisine, diet, and cooking time.
 
 ---
 
-## License
-
-MIT — Built for academic assignment and production demonstration purposes.
