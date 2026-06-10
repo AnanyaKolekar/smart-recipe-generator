@@ -1,4 +1,4 @@
-export default function RecipeHistory({ recipes, onSelect, onRemove, onClear, title, emptyMessage }) {
+export default function RecipeHistory({ recipes, onSelect, onRemove, onClear, title, emptyMessage, clearLabel = 'Clear All' }) {
   if (!recipes?.length) {
     return (
       <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center shadow-sm">
@@ -18,7 +18,7 @@ export default function RecipeHistory({ recipes, onSelect, onRemove, onClear, ti
             onClick={onClear}
             className="text-sm text-red-600 hover:text-red-700 font-medium"
           >
-            Clear All
+            {clearLabel}
           </button>
         )}
       </div>

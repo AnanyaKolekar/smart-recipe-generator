@@ -1,6 +1,7 @@
 """
 RecipeGenAI - Multi-Agent Recipe Recommendation System
 LangGraph orchestration with 4 collaborating AI agents powered by Groq.
+Features: parallel execution, multi-language, agent memory, image generation.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -16,8 +18,16 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
 
+from image_gen import generate_recipe_image_url
+from memory import format_memory_for_prompt
+
 _BACKEND_DIR = Path(__file__).resolve().parent
 _ENV_FILE = _BACKEND_DIR / ".env"
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "kn": "Kannada (ಕನ್ನಡ)",
+}
 
 
 def _load_env() -> None:
@@ -40,6 +50,8 @@ class RecipeState(TypedDict, total=False):
     cuisine: str
     diet: str
     cooking_time: str
+    language: str
+    user_memory: dict[str, Any]
 
     ingredient_analysis: dict[str, Any]
 
@@ -51,6 +63,7 @@ class RecipeState(TypedDict, total=False):
     shopping_list: list[str]
 
     nutrition: dict[str, Any]
+    image_url: str
 
     instructions: list[str]
     tips: list[str]
@@ -85,6 +98,19 @@ def get_llm() -> ChatGroq:
         groq_api_key=api_key,
         temperature=0.7,
     )
+
+
+def _lang_instruction(language: str) -> str:
+    """Return language directive for agent prompts."""
+    lang = language if language in LANGUAGE_NAMES else "en"
+    name = LANGUAGE_NAMES[lang]
+    if lang == "kn":
+        return (
+            f"\n\nIMPORTANT: Respond entirely in {name}. "
+            "All recipe names, descriptions, ingredients, instructions, tips, "
+            "and serving suggestions MUST be written in Kannada script (ಕನ್ನಡ)."
+        )
+    return f"\n\nRespond in {name}."
 
 
 def _parse_json_response(text: str) -> dict[str, Any]:
@@ -140,12 +166,17 @@ Return ONLY valid JSON with this exact structure:
 
 def ingredient_analyzer_agent(state: RecipeState) -> RecipeState:
     """Analyze user ingredients, categories, and recipe opportunities."""
+    lang = state.get("language", "en")
+    memory_ctx = format_memory_for_prompt(state.get("user_memory"))
+
     user_prompt = f"""Available ingredients: {state.get('ingredients', '')}
 Cuisine preference: {state.get('cuisine', 'Any')}
 Dietary preference: {state.get('diet', 'Any')}
 Maximum cooking time: {state.get('cooking_time', '30')} minutes
 
-Analyze these ingredients thoroughly."""
+{memory_ctx}
+
+Analyze these ingredients thoroughly.{_lang_instruction(lang)}"""
 
     try:
         analysis = _invoke_agent(INGREDIENT_ANALYZER_PROMPT, user_prompt)
@@ -161,6 +192,7 @@ Analyze these ingredients thoroughly."""
 RECIPE_FINDER_PROMPT = """You are the Recipe Finder Agent for RecipeGenAI.
 
 Based on ingredient analysis and user preferences, select the BEST matching recipe.
+Consider the user's personalization memory when making your selection.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -180,7 +212,10 @@ def recipe_finder_agent(state: RecipeState) -> RecipeState:
     if state.get("error"):
         return {}
 
+    lang = state.get("language", "en")
+    memory_ctx = format_memory_for_prompt(state.get("user_memory"))
     analysis = state.get("ingredient_analysis", {})
+
     user_prompt = f"""Ingredient Analysis:
 {json.dumps(analysis, indent=2)}
 
@@ -189,7 +224,9 @@ Cuisine: {state.get('cuisine', 'Any')}
 Diet: {state.get('diet', 'Any')}
 Max cooking time: {state.get('cooking_time', '30')} minutes
 
-Select the best recipe and identify missing ingredients."""
+{memory_ctx}
+
+Select the best recipe and identify missing ingredients.{_lang_instruction(lang)}"""
 
     try:
         result = _invoke_agent(RECIPE_FINDER_PROMPT, user_prompt)
@@ -235,13 +272,14 @@ def nutrition_agent(state: RecipeState) -> RecipeState:
     if state.get("error"):
         return {}
 
+    lang = state.get("language", "en")
     user_prompt = f"""Recipe: {state.get('recipe_name', '')}
 Description: {state.get('recipe_description', '')}
 Ingredients: {json.dumps(state.get('required_ingredients', []))}
 Diet: {state.get('diet', 'Any')}
 Cuisine: {state.get('cuisine', 'Any')}
 
-Estimate nutrition per serving."""
+Estimate nutrition per serving.{_lang_instruction(lang)}"""
 
     try:
         nutrition = _invoke_agent(NUTRITION_AGENT_PROMPT, user_prompt)
@@ -274,6 +312,7 @@ def cooking_instruction_agent(state: RecipeState) -> RecipeState:
     if state.get("error"):
         return {}
 
+    lang = state.get("language", "en")
     user_prompt = f"""Recipe: {state.get('recipe_name', '')}
 Description: {state.get('recipe_description', '')}
 Ingredients: {json.dumps(state.get('required_ingredients', []))}
@@ -281,7 +320,7 @@ Cuisine: {state.get('cuisine', 'Any')}
 Diet: {state.get('diet', 'Any')}
 Max cooking time: {state.get('cooking_time', '30')} minutes
 
-Generate complete cooking instructions."""
+Generate complete cooking instructions.{_lang_instruction(lang)}"""
 
     try:
         result = _invoke_agent(COOKING_INSTRUCTION_PROMPT, user_prompt)
@@ -292,6 +331,62 @@ Generate complete cooking instructions."""
         }
     except Exception as exc:
         return {"error": f"Cooking Instruction Agent failed: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Agent 5: Image Generation (runs in parallel — no LLM call)
+# ---------------------------------------------------------------------------
+
+
+def image_generation_agent(state: RecipeState) -> RecipeState:
+    """Generate a recipe image URL."""
+    if state.get("error") or not state.get("recipe_name"):
+        return {}
+
+    try:
+        url = generate_recipe_image_url(
+            recipe_name=state.get("recipe_name", ""),
+            cuisine=state.get("cuisine", ""),
+            description=state.get("recipe_description", ""),
+        )
+        return {"image_url": url}
+    except Exception as exc:
+        return {"image_url": "", "error": f"Image generation failed: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Parallel Execution Node
+# ---------------------------------------------------------------------------
+
+
+def parallel_agents_node(state: RecipeState) -> RecipeState:
+    """
+    Run Nutrition, Cooking Instruction, and Image Generation in parallel
+    for faster response times.
+    """
+    if state.get("error"):
+        return {}
+
+    merged: RecipeState = {}
+    errors: list[str] = []
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [
+            executor.submit(nutrition_agent, state),
+            executor.submit(cooking_instruction_agent, state),
+            executor.submit(image_generation_agent, state),
+        ]
+        for future in as_completed(futures):
+            result = future.result()
+            if result.get("error"):
+                errors.append(result["error"])
+            merged.update({k: v for k, v in result.items() if k != "error"})
+
+    # Only fail on critical agent errors (nutrition/cooking), not image
+    critical = [e for e in errors if "Image" not in e]
+    if critical:
+        merged["error"] = critical[0]
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +402,7 @@ def build_final_response(state: RecipeState) -> RecipeState:
                 "error": state["error"],
                 "recipe_name": "",
                 "description": "",
+                "image_url": "",
                 "ingredients": [],
                 "missing_ingredients": [],
                 "missing_ingredient_suggestions": [],
@@ -315,13 +411,23 @@ def build_final_response(state: RecipeState) -> RecipeState:
                 "instructions": [],
                 "tips": [],
                 "serving_suggestions": [],
+                "language": state.get("language", "en"),
             }
         }
 
     nutrition = state.get("nutrition", {})
+    image_url = state.get("image_url", "")
+    if not image_url and state.get("recipe_name"):
+        image_url = generate_recipe_image_url(
+            recipe_name=state.get("recipe_name", ""),
+            cuisine=state.get("cuisine", ""),
+            description=state.get("recipe_description", ""),
+        )
+
     final = {
         "recipe_name": state.get("recipe_name", ""),
         "description": state.get("recipe_description", ""),
+        "image_url": image_url,
         "ingredients": state.get("required_ingredients", []),
         "missing_ingredients": state.get("missing_ingredients", []),
         "missing_ingredient_suggestions": state.get(
@@ -343,6 +449,7 @@ def build_final_response(state: RecipeState) -> RecipeState:
         "instructions": state.get("instructions", []),
         "tips": state.get("tips", []),
         "serving_suggestions": state.get("serving_suggestions", []),
+        "language": state.get("language", "en"),
     }
     return {"final_response": final}
 
@@ -356,28 +463,26 @@ def create_recipe_workflow() -> StateGraph:
     """
     Build and compile the LangGraph StateGraph workflow.
 
-    Flow: START -> Ingredient Analyzer -> Recipe Finder -> Nutrition
-          -> Cooking Instruction -> Build Response -> END
+    Flow:
+      START -> Ingredient Analyzer -> Recipe Finder
+           -> Parallel (Nutrition + Cooking + Image) -> Build Response -> END
     """
     workflow = StateGraph(RecipeState)
 
     workflow.add_node("ingredient_analyzer", ingredient_analyzer_agent)
     workflow.add_node("recipe_finder", recipe_finder_agent)
-    workflow.add_node("nutrition", nutrition_agent)
-    workflow.add_node("cooking_instruction", cooking_instruction_agent)
+    workflow.add_node("parallel_agents", parallel_agents_node)
     workflow.add_node("build_response", build_final_response)
 
     workflow.add_edge(START, "ingredient_analyzer")
     workflow.add_edge("ingredient_analyzer", "recipe_finder")
-    workflow.add_edge("recipe_finder", "nutrition")
-    workflow.add_edge("nutrition", "cooking_instruction")
-    workflow.add_edge("cooking_instruction", "build_response")
+    workflow.add_edge("recipe_finder", "parallel_agents")
+    workflow.add_edge("parallel_agents", "build_response")
     workflow.add_edge("build_response", END)
 
     return workflow.compile()
 
 
-# Compiled graph singleton for reuse
 _recipe_graph = None
 
 
@@ -394,6 +499,8 @@ def run_recipe_workflow(
     cuisine: str,
     diet: str,
     cooking_time: str,
+    language: str = "en",
+    user_memory: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Execute the full multi-agent recipe generation workflow.
@@ -403,6 +510,8 @@ def run_recipe_workflow(
         cuisine: Preferred cuisine type.
         diet: Dietary preference.
         cooking_time: Maximum cooking time in minutes.
+        language: Response language code ('en' or 'kn').
+        user_memory: Optional personalized preferences from agent memory.
 
     Returns:
         Final structured recipe response dictionary.
@@ -412,6 +521,8 @@ def run_recipe_workflow(
         "cuisine": cuisine.strip(),
         "diet": diet.strip(),
         "cooking_time": str(cooking_time).strip(),
+        "language": language if language in LANGUAGE_NAMES else "en",
+        "user_memory": user_memory or {},
     }
 
     graph = get_recipe_graph()
@@ -435,6 +546,7 @@ def main() -> None:
     cuisine = input("Enter cuisine: ").strip()
     diet = input("Enter dietary preference: ").strip()
     cooking_time = input("Enter cooking time (minutes): ").strip()
+    language = input("Enter language (en/kn) [en]: ").strip() or "en"
 
     if not ingredients:
         print("Error: At least one ingredient is required.")
@@ -443,12 +555,13 @@ def main() -> None:
     print("\nGenerating recipe through multi-agent pipeline...")
     print("  [1/4] Ingredient Analyzer Agent")
     print("  [2/4] Recipe Finder Agent")
-    print("  [3/4] Nutrition Agent")
-    print("  [4/4] Cooking Instruction Agent")
+    print("  [3-5] Nutrition + Cooking + Image (parallel)")
     print()
 
     try:
-        result = run_recipe_workflow(ingredients, cuisine, diet, cooking_time)
+        result = run_recipe_workflow(
+            ingredients, cuisine, diet, cooking_time, language=language
+        )
     except Exception as exc:
         print(f"Workflow failed: {exc}")
         return
@@ -460,6 +573,8 @@ def main() -> None:
     print("=" * 60)
     print(f"  RECIPE: {result.get('recipe_name', 'N/A')}")
     print("=" * 60)
+    if result.get("image_url"):
+        print(f"\nImage: {result['image_url']}")
     print(f"\nDescription:\n  {result.get('description', '')}")
 
     print("\nIngredients:")
@@ -472,36 +587,14 @@ def main() -> None:
         for item in missing:
             print(f"  - {item}")
 
-    suggestions = result.get("missing_ingredient_suggestions", [])
-    if suggestions:
-        print("\nMissing Ingredient Suggestions:")
-        for item in suggestions:
-            print(f"  - {item}")
-
-    shopping = result.get("shopping_list", [])
-    if shopping:
-        print("\nShopping List:")
-        for item in shopping:
-            print(f"  - {item}")
-
     nutrition = result.get("nutrition", {})
     print("\nNutrition (per serving):")
     print(f"  Calories:  {nutrition.get('calories', 'N/A')}")
     print(f"  Protein:   {nutrition.get('protein', 'N/A')}g")
-    print(f"  Carbs:     {nutrition.get('carbs', 'N/A')}g")
-    print(f"  Fat:       {nutrition.get('fat', 'N/A')}g")
 
     print("\nCooking Instructions:")
     for i, step in enumerate(result.get("instructions", []), 1):
         print(f"  {i}. {step}")
-
-    print("\nCooking Tips:")
-    for tip in result.get("tips", []):
-        print(f"  * {tip}")
-
-    print("\nServing Suggestions:")
-    for suggestion in result.get("serving_suggestions", []):
-        print(f"  - {suggestion}")
 
     print("\n" + "=" * 60)
     print("  Recipe generation complete!")

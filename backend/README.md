@@ -1,38 +1,42 @@
 # RecipeGenAI Backend
 
-FastAPI backend with a LangGraph multi-agent recipe recommendation pipeline powered by Groq.
+FastAPI backend with LangGraph multi-agent pipeline powered by Groq.
 
 ## Quick Start
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env and set GROQ_API_KEY
+# Set GROQ_API_KEY and JWT_SECRET_KEY in .env
 python app.py
 ```
 
-API runs at `http://localhost:8000`. Interactive docs: `http://localhost:8000/docs`.
+API: `http://localhost:8000` | Docs: `http://localhost:8000/docs`
 
-## CLI Mode (Assignment)
+## Workflow (v2.0)
 
-```bash
-python multi_agent_system.py
+```
+START → Ingredient Analyzer → Recipe Finder
+     → Parallel (Nutrition + Cooking Instruction + Image)
+     → Build Response → END
 ```
 
 ## Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| POST | `/generate-recipe` | Run multi-agent pipeline |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/register` | No | Register user |
+| POST | `/auth/login` | No | Login, get JWT |
+| GET | `/auth/me` | Yes | Current user |
+| GET | `/auth/memory` | Yes | Agent memory preferences |
+| POST | `/generate-recipe` | Optional | Run multi-agent pipeline |
+| GET | `/health` | No | Health check |
 
-## Multi-Agent Workflow
+## CLI Mode
 
+```bash
+python multi_agent_system.py
 ```
-START → Ingredient Analyzer → Recipe Finder → Nutrition → Cooking Instruction → END
-```
-
-All agents share `RecipeState` via LangGraph `StateGraph`.

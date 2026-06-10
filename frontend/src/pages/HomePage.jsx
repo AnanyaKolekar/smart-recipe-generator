@@ -4,6 +4,8 @@ import RecipeResult from '../components/RecipeResult'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorAlert from '../components/ErrorAlert'
 import RecipeHistory from '../components/RecipeHistory'
+import { useAuth } from '../context/AuthContext'
+import { useLanguage } from '../context/LanguageContext'
 import { generateRecipe } from '../services/api'
 import {
   saveRecipe,
@@ -15,15 +17,17 @@ import {
 } from '../services/storage'
 import { downloadRecipePDF } from '../services/pdf'
 
-const DEFAULT_FORM = {
-  ingredients: '',
-  cuisine: 'Indian',
-  diet: 'Vegetarian',
-  cooking_time: '30',
-}
-
 export default function HomePage({ activeTab, onTabChange }) {
-  const [formData, setFormData] = useState(DEFAULT_FORM)
+  const { t, language } = useLanguage()
+  const { token, refreshMemory } = useAuth()
+
+  const [formData, setFormData] = useState({
+    ingredients: '',
+    cuisine: 'Indian',
+    diet: 'Vegetarian',
+    cooking_time: '30',
+    language,
+  })
   const [recipe, setRecipe] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -38,10 +42,12 @@ export default function HomePage({ activeTab, onTabChange }) {
     setIsSaved(false)
 
     try {
-      const result = await generateRecipe(formData)
+      const payload = { ...formData, language }
+      const result = await generateRecipe(payload, token)
       setRecipe(result)
       addToHistory(result)
       setHistory(getRecipeHistory())
+      if (token) refreshMemory()
     } catch (err) {
       const detail =
         err.response?.data?.detail ||
@@ -74,8 +80,8 @@ export default function HomePage({ activeTab, onTabChange }) {
     return (
       <RecipeHistory
         recipes={savedRecipes}
-        title="Saved Recipes"
-        emptyMessage="No saved recipes yet. Generate and save a recipe to see it here."
+        title={t('savedRecipes')}
+        emptyMessage={t('savedEmpty')}
         onSelect={handleSelectRecipe}
         onRemove={(id) => {
           removeSavedRecipe(id)
@@ -89,13 +95,14 @@ export default function HomePage({ activeTab, onTabChange }) {
     return (
       <RecipeHistory
         recipes={history}
-        title="Recipe History"
-        emptyMessage="No recipe history yet. Your generated recipes will appear here."
+        title={t('historyTitle')}
+        emptyMessage={t('historyEmpty')}
         onSelect={handleSelectRecipe}
         onClear={() => {
           clearHistory()
           setHistory([])
         }}
+        clearLabel={t('clearAll')}
       />
     )
   }
@@ -109,7 +116,7 @@ export default function HomePage({ activeTab, onTabChange }) {
         loading={loading}
       />
 
-      <ErrorAlert message={error} onDismiss={() => setError(null)} />
+      <ErrorAlert message={error} onDismiss={() => setError(null)} title={t('errorTitle')} />
 
       {loading && <LoadingSpinner />}
 

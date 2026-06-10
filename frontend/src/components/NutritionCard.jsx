@@ -1,4 +1,8 @@
+import { useLanguage } from '../context/LanguageContext'
+
 export default function NutritionCard({ nutrition }) {
+  const { t } = useLanguage()
+
   const items = [
     { label: 'Calories', value: nutrition?.calories, unit: 'kcal', icon: '🔥', color: 'bg-orange-50 text-orange-700' },
     { label: 'Protein', value: nutrition?.protein, unit: 'g', icon: '💪', color: 'bg-blue-50 text-blue-700' },
@@ -8,16 +12,14 @@ export default function NutritionCard({ nutrition }) {
 
   return (
     <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm">
-      <h3 className="font-display text-lg font-semibold text-ink mb-1">Nutrition</h3>
+      <h3 className="font-display text-lg font-semibold text-ink mb-1">{t('nutrition')}</h3>
       <p className="text-xs text-muted mb-4">
-        Per serving{nutrition?.serving_size ? ` (${nutrition.serving_size})` : ''}
+        {t('perServing')}
+        {nutrition?.serving_size ? ` (${nutrition.serving_size})` : ''}
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {items.map((item) => (
-          <div
-            key={item.label}
-            className={`rounded-xl p-4 text-center ${item.color}`}
-          >
+          <div key={item.label} className={`rounded-xl p-4 text-center ${item.color}`}>
             <div className="text-xl mb-1">{item.icon}</div>
             <div className="text-2xl font-bold">
               {item.value ?? '—'}

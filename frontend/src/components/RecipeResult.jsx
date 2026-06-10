@@ -1,4 +1,8 @@
+import { useState } from 'react'
+import { useLanguage } from '../context/LanguageContext'
 import NutritionCard from './NutritionCard'
+import RecipeImage from './RecipeImage'
+import VoiceCookingAgent from './VoiceCookingAgent'
 
 function ListSection({ title, items, icon, variant = 'default' }) {
   if (!items?.length) return null
@@ -27,14 +31,25 @@ function ListSection({ title, items, icon, variant = 'default' }) {
 }
 
 export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
+  const { t, language } = useLanguage()
+  const [activeStep, setActiveStep] = useState(-1)
   if (!recipe) return null
 
   return (
     <div className="space-y-6 animate-in fade-in">
+      <RecipeImage imageUrl={recipe.image_url} recipeName={recipe.recipe_name} />
+
       <div className="bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl p-6 sm:p-8 text-white shadow-xl shadow-brand-200">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <p className="text-brand-100 text-sm font-medium mb-1">Your Recipe</p>
+            <p className="text-brand-100 text-sm font-medium mb-1">
+              {t('yourRecipe')}
+              {recipe.personalized && (
+                <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
+                  ✨ {t('personalized')}
+                </span>
+              )}
+            </p>
             <h2 className="font-display text-2xl sm:text-3xl font-bold">
               {recipe.recipe_name}
             </h2>
@@ -49,23 +64,23 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
               disabled={isSaved}
               className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium backdrop-blur transition disabled:opacity-60"
             >
-              {isSaved ? '❤️ Saved' : '🤍 Save'}
+              {isSaved ? `❤️ ${t('savedLabel')}` : `🤍 ${t('save')}`}
             </button>
             <button
               type="button"
               onClick={onDownload}
               className="px-4 py-2 bg-white text-brand-700 hover:bg-brand-50 rounded-lg text-sm font-medium transition"
             >
-              📄 PDF
+              📄 {t('pdf')}
             </button>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ListSection title="Ingredients" items={recipe.ingredients} icon="🥗" />
+        <ListSection title={t('ingredientsList')} items={recipe.ingredients} icon="🥗" />
         <ListSection
-          title="Missing Ingredients"
+          title={t('missingIngredients')}
           items={recipe.missing_ingredients}
           icon="⚠️"
           variant="warning"
@@ -74,16 +89,12 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ListSection
-          title="Ingredient Suggestions"
+          title={t('suggestions')}
           items={recipe.missing_ingredient_suggestions}
           icon="💡"
           variant="info"
         />
-        <ListSection
-          title="Shopping List"
-          items={recipe.shopping_list}
-          icon="🛒"
-        />
+        <ListSection title={t('shoppingList')} items={recipe.shopping_list} icon="🛒" />
       </div>
 
       <NutritionCard nutrition={recipe.nutrition} />
@@ -91,12 +102,31 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
       {recipe.instructions?.length > 0 && (
         <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm">
           <h3 className="font-display text-lg font-semibold text-ink mb-4 flex items-center gap-2">
-            <span>👨‍🍳</span> Cooking Instructions
+            <span>👨‍🍳</span> {t('instructions')}
           </h3>
-          <ol className="space-y-4">
+
+          <VoiceCookingAgent
+            recipeName={recipe.recipe_name}
+            instructions={recipe.instructions}
+            language={recipe.language || language}
+            onStepChange={setActiveStep}
+          />
+
+          <ol className="space-y-4 mt-4">
             {recipe.instructions.map((step, i) => (
-              <li key={i} className="flex gap-4">
-                <span className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-bold">
+              <li
+                key={i}
+                className={`flex gap-4 rounded-xl p-2 transition-colors ${
+                  activeStep === i ? 'bg-violet-50 ring-2 ring-violet-200' : ''
+                }`}
+              >
+                <span
+                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                    activeStep === i
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-brand-100 text-brand-700'
+                  }`}
+                >
                   {i + 1}
                 </span>
                 <p className="text-stone-700 pt-1 leading-relaxed">{step}</p>
@@ -107,12 +137,8 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ListSection title="Cooking Tips" items={recipe.tips} icon="💡" variant="info" />
-        <ListSection
-          title="Serving Suggestions"
-          items={recipe.serving_suggestions}
-          icon="🍽️"
-        />
+        <ListSection title={t('tips')} items={recipe.tips} icon="💡" variant="info" />
+        <ListSection title={t('serving')} items={recipe.serving_suggestions} icon="🍽️" />
       </div>
     </div>
   )
