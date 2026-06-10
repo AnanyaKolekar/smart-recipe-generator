@@ -246,14 +246,6 @@ Interactive prompts for ingredients, cuisine, diet, and cooking time.
 
 ---
 
-## Screenshots
-
-| Home | Recipe Result | Nutrition |
-|------|--------------|-----------|
-| ![Home](https://via.placeholder.com/400x250?text=Home+Screen) | ![Result](https://via.placeholder.com/400x250?text=Recipe+Result) | ![Nutrition](https://via.placeholder.com/400x250?text=Nutrition+Card) |
-
----
-
 ## Future Enhancements
 
 - User authentication and cloud recipe storage
