@@ -113,6 +113,29 @@ def _lang_instruction(language: str) -> str:
     return f"\n\nRespond in {name}."
 
 
+def _nutrition_lang_note(language: str) -> str:
+    """Nutrition agent: keep JSON keys in English, only translate text fields."""
+    if language == "kn":
+        return (
+            "\n\nWrite serving_size and notes in Kannada (ಕನ್ನಡ). "
+            "Keep all JSON keys in English. Numbers must be numeric."
+        )
+    return ""
+
+
+def _to_number(value: Any, default: float = 0) -> float:
+    """Safely convert nutrition values to numbers."""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        cleaned = re.sub(r"[^\d.]", "", str(value))
+        return float(cleaned) if cleaned else default
+    except (TypeError, ValueError):
+        return default
+
+
 def _parse_json_response(text: str) -> dict[str, Any]:
     """Extract and parse JSON from an LLM response string."""
     text = text.strip()
@@ -264,7 +287,11 @@ Return ONLY valid JSON with this exact structure:
   "notes": "brief nutrition note"
 }
 
-Use realistic estimates based on ingredients and portion sizes. All numeric values should be numbers, not strings."""
+Use realistic estimates based on ingredients and portion sizes.
+
+CRITICAL: JSON keys MUST remain exactly as shown in English (calories, protein_g, etc.).
+Only serving_size and notes text values may be translated to the user's language.
+All numeric fields MUST be plain numbers, never strings."""
 
 
 def nutrition_agent(state: RecipeState) -> RecipeState:
@@ -279,7 +306,7 @@ Ingredients: {json.dumps(state.get('required_ingredients', []))}
 Diet: {state.get('diet', 'Any')}
 Cuisine: {state.get('cuisine', 'Any')}
 
-Estimate nutrition per serving.{_lang_instruction(lang)}"""
+Estimate nutrition per serving.{_nutrition_lang_note(lang)}"""
 
     try:
         nutrition = _invoke_agent(NUTRITION_AGENT_PROMPT, user_prompt)
@@ -437,16 +464,22 @@ def build_final_response(state: RecipeState) -> RecipeState:
         ),
         "shopping_list": state.get("shopping_list", []),
         "nutrition": {
-            "calories": nutrition.get("calories", 0),
-            "protein": nutrition.get("protein_g", nutrition.get("protein", 0)),
-            "carbs": nutrition.get(
-                "carbohydrates_g", nutrition.get("carbs", 0)
+            "calories": _to_number(nutrition.get("calories", 0)),
+            "protein": _to_number(
+                nutrition.get("protein_g", nutrition.get("protein", 0))
             ),
-            "fat": nutrition.get("fat_g", nutrition.get("fat", 0)),
-            "fiber": nutrition.get("fiber_g", nutrition.get("fiber", 0)),
-            "sodium": nutrition.get("sodium_mg", nutrition.get("sodium", 0)),
-            "serving_size": nutrition.get("serving_size", "1 serving"),
-            "notes": nutrition.get("notes", ""),
+            "carbs": _to_number(
+                nutrition.get("carbohydrates_g", nutrition.get("carbs", 0))
+            ),
+            "fat": _to_number(nutrition.get("fat_g", nutrition.get("fat", 0))),
+            "fiber": _to_number(nutrition.get("fiber_g", nutrition.get("fiber", 0))),
+            "sodium": _to_number(
+                nutrition.get("sodium_mg", nutrition.get("sodium", 0))
+            ),
+            "serving_size": str(
+                nutrition.get("serving_size", "1 serving") or "1 serving"
+            ),
+            "notes": str(nutrition.get("notes", "") or ""),
         },
         "instructions": state.get("instructions", []),
         "tips": state.get("tips", []),

@@ -50,7 +50,12 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
     }
 
     if (cacheRef.current[lang]) {
-      setDisplayRecipe({ ...recipe, ...cacheRef.current[lang], language: lang })
+      setDisplayRecipe({
+        ...recipe,
+        ...cacheRef.current[lang],
+        nutrition: cacheRef.current[lang].nutrition ?? recipe.nutrition,
+        language: lang,
+      })
       return
     }
 
@@ -63,11 +68,20 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
         instructions: recipe.instructions,
         tips: recipe.tips,
         serving_suggestions: recipe.serving_suggestions,
+        nutrition_serving_size: recipe.nutrition?.serving_size || '',
+        nutrition_notes: recipe.nutrition?.notes || '',
         source_language: originalLang,
         target_language: lang,
       })
-      cacheRef.current[lang] = translated
-      setDisplayRecipe({ ...recipe, ...translated, language: lang })
+      const nutrition = {
+        ...recipe.nutrition,
+        serving_size:
+          translated.nutrition_serving_size || recipe.nutrition?.serving_size || '',
+        notes: translated.nutrition_notes || recipe.nutrition?.notes || '',
+      }
+      const merged = { ...translated, nutrition, language: lang }
+      cacheRef.current[lang] = merged
+      setDisplayRecipe({ ...recipe, ...merged })
     } catch {
       setDisplayRecipe(recipe)
     } finally {
@@ -158,7 +172,7 @@ export default function RecipeResult({ recipe, onSave, onDownload, isSaved }) {
         <ListSection title={t('shoppingList')} items={recipe.shopping_list} icon="🛒" />
       </div>
 
-      <NutritionCard nutrition={recipe.nutrition} />
+      <NutritionCard nutrition={displayRecipe.nutrition ?? recipe.nutrition} />
 
       {displayRecipe.instructions?.length > 0 && (
         <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-sm space-y-5">

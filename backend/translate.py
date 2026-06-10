@@ -22,7 +22,9 @@ Return ONLY valid JSON:
   "ingredients": ["translated ingredient 1", "..."],
   "instructions": ["translated step 1", "..."],
   "tips": ["translated tip 1", "..."],
-  "serving_suggestions": ["translated suggestion 1", "..."]
+  "serving_suggestions": ["translated suggestion 1", "..."],
+  "nutrition_serving_size": "translated serving size",
+  "nutrition_notes": "translated nutrition note"
 }
 
 For Kannada (kn): use Kannada script (ಕನ್ನಡ) throughout.
@@ -51,6 +53,8 @@ def translate_recipe_content(
     instructions: list[str],
     tips: list[str],
     serving_suggestions: list[str],
+    nutrition_serving_size: str = "",
+    nutrition_notes: str = "",
     source_language: str,
     target_language: str,
 ) -> dict[str, Any]:
@@ -63,6 +67,8 @@ def translate_recipe_content(
             "instructions": instructions,
             "tips": tips,
             "serving_suggestions": serving_suggestions,
+            "nutrition_serving_size": nutrition_serving_size,
+            "nutrition_notes": nutrition_notes,
         }
 
     target_label = "Kannada (ಕನ್ನಡ)" if target_language == "kn" else "English"
@@ -76,6 +82,8 @@ Ingredients: {json.dumps(ingredients, ensure_ascii=False)}
 Instructions: {json.dumps(instructions, ensure_ascii=False)}
 Tips: {json.dumps(tips, ensure_ascii=False)}
 Serving suggestions: {json.dumps(serving_suggestions, ensure_ascii=False)}
+Nutrition serving size: {nutrition_serving_size}
+Nutrition notes: {nutrition_notes}
 
 Translate everything to {target_label}."""
 
@@ -96,4 +104,8 @@ Translate everything to {target_label}."""
         "instructions": result.get("instructions", instructions),
         "tips": result.get("tips", tips),
         "serving_suggestions": result.get("serving_suggestions", serving_suggestions),
+        "nutrition_serving_size": result.get(
+            "nutrition_serving_size", nutrition_serving_size
+        ),
+        "nutrition_notes": result.get("nutrition_notes", nutrition_notes),
     }

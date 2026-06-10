@@ -33,6 +33,7 @@ from database import init_db
 from memory import get_user_memory, update_user_memory
 from multi_agent_system import get_llm, run_recipe_workflow
 from translate import translate_recipe_content
+from tts import synthesize_speech_base64
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,6 +123,8 @@ class TranslateRequest(BaseModel):
     instructions: list[str] = Field(default_factory=list)
     tips: list[str] = Field(default_factory=list)
     serving_suggestions: list[str] = Field(default_factory=list)
+    nutrition_serving_size: str = ""
+    nutrition_notes: str = ""
     source_language: Literal["en", "kn"] = "en"
     target_language: Literal["en", "kn"] = "kn"
 
@@ -133,7 +136,20 @@ class TranslateResponse(BaseModel):
     instructions: list[str] = Field(default_factory=list)
     tips: list[str] = Field(default_factory=list)
     serving_suggestions: list[str] = Field(default_factory=list)
+    nutrition_serving_size: str = ""
+    nutrition_notes: str = ""
     language: str = "en"
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4500)
+    language: Literal["en", "kn"] = "en"
+
+
+class TTSResponse(BaseModel):
+    audio_base64: str
+    language: str
+    format: str = "mp3"
 
 
 class HealthResponse(BaseModel):
@@ -316,6 +332,8 @@ async def translate_recipe(request: TranslateRequest) -> TranslateResponse:
             instructions=request.instructions,
             tips=request.tips,
             serving_suggestions=request.serving_suggestions,
+            nutrition_serving_size=request.nutrition_serving_size,
+            nutrition_notes=request.nutrition_notes,
             language=request.target_language,
         )
 
@@ -327,6 +345,8 @@ async def translate_recipe(request: TranslateRequest) -> TranslateResponse:
             instructions=request.instructions,
             tips=request.tips,
             serving_suggestions=request.serving_suggestions,
+            nutrition_serving_size=request.nutrition_serving_size,
+            nutrition_notes=request.nutrition_notes,
             source_language=request.source_language,
             target_language=request.target_language,
         )
@@ -338,6 +358,26 @@ async def translate_recipe(request: TranslateRequest) -> TranslateResponse:
         ) from exc
 
     return TranslateResponse(**result, language=request.target_language)
+
+
+@app.post("/synthesize-speech", response_model=TTSResponse, tags=["Recipe"])
+async def synthesize_speech(request: TTSRequest) -> TTSResponse:
+    """Synthesize speech with Indian English or Kannada accent via Google TTS."""
+    try:
+        audio_base64 = synthesize_speech_base64(request.text, request.language)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Speech synthesis failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Speech synthesis failed: {exc}",
+        ) from exc
+
+    return TTSResponse(audio_base64=audio_base64, language=request.language)
 
 
 @app.get("/", tags=["Root"])

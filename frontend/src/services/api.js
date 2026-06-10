@@ -56,4 +56,14 @@ export async function translateRecipeContent(payload) {
   return response.data
 }
 
+/**
+ * Synthesize speech with Indian English or Kannada accent.
+ */
+export async function synthesizeSpeech(payload) {
+  const response = await apiClient.post('/synthesize-speech', payload, {
+    timeout: 60000,
+  })
+  return response.data
+}
+
 export default apiClient

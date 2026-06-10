@@ -1,13 +1,46 @@
 import { useLanguage } from '../context/LanguageContext'
 
+function hasNutritionData(nutrition) {
+  if (!nutrition) return false
+  return [nutrition.calories, nutrition.protein, nutrition.carbs, nutrition.fat].some(
+    (value) => value != null && Number(value) > 0,
+  )
+}
+
 export default function NutritionCard({ nutrition }) {
   const { t } = useLanguage()
 
+  if (!hasNutritionData(nutrition)) return null
+
   const items = [
-    { label: 'Calories', value: nutrition?.calories, unit: 'kcal', icon: '🔥', color: 'bg-orange-50 text-orange-700' },
-    { label: 'Protein', value: nutrition?.protein, unit: 'g', icon: '💪', color: 'bg-blue-50 text-blue-700' },
-    { label: 'Carbs', value: nutrition?.carbs, unit: 'g', icon: '🌾', color: 'bg-amber-50 text-amber-700' },
-    { label: 'Fat', value: nutrition?.fat, unit: 'g', icon: '🥑', color: 'bg-green-50 text-green-700' },
+    {
+      label: t('calories'),
+      value: nutrition.calories,
+      unit: 'kcal',
+      icon: '🔥',
+      color: 'bg-orange-50 text-orange-700',
+    },
+    {
+      label: t('protein'),
+      value: nutrition.protein,
+      unit: 'g',
+      icon: '💪',
+      color: 'bg-blue-50 text-blue-700',
+    },
+    {
+      label: t('carbs'),
+      value: nutrition.carbs,
+      unit: 'g',
+      icon: '🌾',
+      color: 'bg-amber-50 text-amber-700',
+    },
+    {
+      label: t('fat'),
+      value: nutrition.fat,
+      unit: 'g',
+      icon: '🥑',
+      color: 'bg-green-50 text-green-700',
+    },
   ]
 
   return (

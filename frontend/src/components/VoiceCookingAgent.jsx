@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../context/LanguageContext'
-import { configureUtterance, loadVoices, pickIndianVoice } from '../services/voiceUtils'
+import {
+  isIndianTTSPaused,
+  isIndianTTSPlaying,
+  pauseIndianTTS,
+  resumeIndianTTS,
+  speakWithIndianTTS,
+  stopIndianTTS,
+} from '../services/tts'
 
 export default function VoiceCookingAgent({
   recipeName,
@@ -14,41 +21,20 @@ export default function VoiceCookingAgent({
   const [speaking, setSpeaking] = useState(false)
   const [paused, setPaused] = useState(false)
   const [currentStep, setCurrentStep] = useState(-1)
-  const [supported, setSupported] = useState(true)
-  const [activeVoiceName, setActiveVoiceName] = useState('')
-  const voicesRef = useRef([])
+  const [error, setError] = useState('')
+  const cancelledRef = useRef(false)
   const instructionsRef = useRef(instructions)
 
   useEffect(() => {
     instructionsRef.current = instructions
   }, [instructions])
 
-  useEffect(() => {
-    if (!window.speechSynthesis) {
-      setSupported(false)
-      return
-    }
-
-    loadVoices().then((voices) => {
-      voicesRef.current = voices
-    })
-
-    return () => window.speechSynthesis?.cancel()
-  }, [])
-
-  const getVoice = useCallback((lang) => {
-    const voices = voicesRef.current.length
-      ? voicesRef.current
-      : window.speechSynthesis.getVoices()
-    const voice = pickIndianVoice(voices, lang)
-    if (voice) setActiveVoiceName(voice.name)
-    return voice
-  }, [])
+  useEffect(() => () => stopIndianTTS(), [])
 
   const speakStep = useCallback(
-    (index, lang) => {
+    async (index, lang) => {
       const steps = instructionsRef.current
-      if (!steps?.length || index >= steps.length) {
+      if (cancelledRef.current || !steps?.length || index >= steps.length) {
         setSpeaking(false)
         setPaused(false)
         setCurrentStep(-1)
@@ -56,83 +42,77 @@ export default function VoiceCookingAgent({
         return
       }
 
-      const utterance = new SpeechSynthesisUtterance()
+      setCurrentStep(index)
+      onStepChange?.(index)
+
       const intro = lang === 'kn' ? `ಹಂತ ${index + 1}. ` : `Step ${index + 1}. `
-      utterance.text = intro + steps[index]
-      configureUtterance(utterance, lang, getVoice(lang))
-
-      utterance.onstart = () => {
-        setCurrentStep(index)
-        onStepChange?.(index)
+      try {
+        await speakWithIndianTTS(intro + steps[index], lang)
+        if (!cancelledRef.current) {
+          await speakStep(index + 1, lang)
+        }
+      } catch {
+        if (!cancelledRef.current) {
+          setError(t('voiceAgentUnsupported'))
+          setSpeaking(false)
+          setPaused(false)
+          setCurrentStep(-1)
+          onStepChange?.(-1)
+        }
       }
-      utterance.onend = () => speakStep(index + 1, lang)
-      utterance.onerror = () => {
-        setSpeaking(false)
-        setPaused(false)
-        setCurrentStep(-1)
-        onStepChange?.(-1)
-      }
-
-      window.speechSynthesis.speak(utterance)
     },
-    [getVoice, onStepChange],
+    [onStepChange, t],
   )
 
   const start = async (lang) => {
     if (!instructions?.length || translating) return
-    window.speechSynthesis.cancel()
+    stop()
+    cancelledRef.current = false
+    setError('')
     setSpeaking(true)
     setPaused(false)
-
-    voicesRef.current = await loadVoices()
-    const voice = getVoice(lang)
 
     const introText =
       lang === 'kn'
         ? `${recipeName || 'ಪಾಕವಿಧಾನ'}. ಅಡುಗೆ ಸೂಚನೆಗಳನ್ನು ಆಲಿಸಲು ಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ.`
         : `${recipeName || 'Recipe'}. Starting cooking instructions.`
 
-    const intro = new SpeechSynthesisUtterance(introText)
-    configureUtterance(intro, lang, voice)
-    intro.onend = () => speakStep(0, lang)
-    window.speechSynthesis.speak(intro)
+    try {
+      await speakWithIndianTTS(introText, lang)
+      if (!cancelledRef.current) {
+        await speakStep(0, lang)
+      }
+    } catch {
+      if (!cancelledRef.current) {
+        setError(t('voiceAgentUnsupported'))
+        setSpeaking(false)
+        setPaused(false)
+      }
+    }
   }
 
   const handleLangChange = (lang) => {
     stop()
     onVoiceLangChange?.(lang)
-    // Preview which Indian voice will be used
-    loadVoices().then((voices) => {
-      voicesRef.current = voices
-      const voice = pickIndianVoice(voices, lang)
-      setActiveVoiceName(voice?.name || '')
-    })
   }
 
-  useEffect(() => {
-    loadVoices().then((voices) => {
-      voicesRef.current = voices
-      const voice = pickIndianVoice(voices, voiceLang)
-      setActiveVoiceName(voice?.name || '')
-    })
-  }, [voiceLang])
-
   const pause = () => {
-    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-      window.speechSynthesis.pause()
+    if (isIndianTTSPlaying()) {
+      pauseIndianTTS()
       setPaused(true)
     }
   }
 
   const resume = () => {
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume()
+    if (isIndianTTSPaused()) {
+      resumeIndianTTS()
       setPaused(false)
     }
   }
 
   const stop = () => {
-    window.speechSynthesis.cancel()
+    cancelledRef.current = true
+    stopIndianTTS()
     setSpeaking(false)
     setPaused(false)
     setCurrentStep(-1)
@@ -140,10 +120,6 @@ export default function VoiceCookingAgent({
   }
 
   if (!instructions?.length && !translating) return null
-
-  if (!supported) {
-    return <p className="text-sm text-muted">{t('voiceAgentUnsupported')}</p>
-  }
 
   return (
     <div className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 via-white to-brand-50 p-5 sm:p-6 shadow-sm">
@@ -185,12 +161,12 @@ export default function VoiceCookingAgent({
             🇮🇳 ಕನ್ನಡ (India)
           </button>
         </div>
-        {activeVoiceName && (
-          <p className="text-xs text-violet-600 mt-2">
-            🎙️ {t('voiceAccent')}: {activeVoiceName}
-          </p>
-        )}
+        <p className="text-xs text-violet-600 mt-2">
+          🎙️ {t('voiceAccent')}: {t('voiceEngineGtts')}
+        </p>
       </div>
+
+      {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
       <div className="flex flex-wrap gap-2">
         {!speaking ? (
