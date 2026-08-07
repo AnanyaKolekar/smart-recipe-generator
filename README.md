@@ -2,10 +2,6 @@
 
 A production-ready, end-to-end AI application where **4 specialized agents** collaborate via **LangGraph** to generate personalized recipes from your available ingredients and preferences.
 
-![RecipeGenAI](https://via.placeholder.com/800x400?text=RecipeGenAI+Screenshot)
-
-> Replace the placeholder above with a screenshot after running the app.
-
 ---
 
 ## Project Overview
@@ -199,7 +195,7 @@ npm run dev
 
 App: `http://localhost:5173`
 
-### CLI Mode (Assignment Requirement)
+### CLI Mode (Requirement)
 
 ```bash
 cd backend
@@ -258,14 +254,6 @@ Interactive prompts for ingredients, cuisine, diet, and cooking time.
 | Save Recipe | LocalStorage persistence |
 | Recipe History | LocalStorage with history tab |
 | Download PDF | jsPDF client-side export |
-
----
-
-## Screenshots
-
-| Home | Recipe Result | Nutrition |
-|------|--------------|-----------|
-| ![Home](https://via.placeholder.com/400x250?text=Home+Screen) | ![Result](https://via.placeholder.com/400x250?text=Recipe+Result) | ![Nutrition](https://via.placeholder.com/400x250?text=Nutrition+Card) |
 
 ---
 

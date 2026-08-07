@@ -43,6 +43,15 @@ export async function generateRecipe(payload, token = null) {
   return response.data
 }
 
+/**
+ * Search for a recipe directly by dish name.
+ */
+export async function searchRecipe(payload, token = null) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const response = await apiClient.post('/search-recipe', payload, { headers })
+  return response.data
+}
+
 export async function checkHealth() {
   const response = await apiClient.get('/health')
   return response.data

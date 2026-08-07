@@ -31,7 +31,7 @@ from auth import (
 )
 from database import init_db
 from memory import get_user_memory, update_user_memory
-from multi_agent_system import get_llm, run_recipe_workflow
+from multi_agent_system import get_llm, run_recipe_search_workflow, run_recipe_workflow
 from translate import translate_recipe_content
 from tts import synthesize_speech_base64_async
 
@@ -42,6 +42,38 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Pydantic Schemas
 # ---------------------------------------------------------------------------
+
+
+class RecipeSearchRequest(BaseModel):
+    """Request body for direct recipe search by dish name."""
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Recipe or dish name to look up",
+        examples=["poori sagu", "biryani", "paneer butter masala"],
+    )
+    cuisine: str = Field(default="South Indian", examples=["South Indian"])
+    diet: str = Field(default="Vegetarian", examples=["Vegetarian"])
+    cooking_time: str = Field(default="30", examples=["30"])
+    language: Literal["en", "kn"] = Field(default="en")
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Recipe search query cannot be empty")
+        return cleaned
+
+    @field_validator("cuisine", "diet")
+    @classmethod
+    def validate_non_empty_strings(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Field cannot be empty")
+        return cleaned
 
 
 class RecipeRequest(BaseModel):
@@ -158,6 +190,32 @@ class HealthResponse(BaseModel):
     version: str
 
 
+def _to_recipe_response(
+    result: dict[str, Any],
+    language: str,
+    personalized: bool,
+) -> RecipeResponse:
+    """Build RecipeResponse from workflow result dict."""
+    nutrition_data = result.get("nutrition", {})
+    return RecipeResponse(
+        recipe_name=result.get("recipe_name", ""),
+        description=result.get("description", ""),
+        image_url=result.get("image_url", ""),
+        ingredients=result.get("ingredients", []),
+        missing_ingredients=result.get("missing_ingredients", []),
+        missing_ingredient_suggestions=result.get(
+            "missing_ingredient_suggestions", []
+        ),
+        shopping_list=result.get("shopping_list", []),
+        nutrition=NutritionInfo(**nutrition_data),
+        instructions=result.get("instructions", []),
+        tips=result.get("tips", []),
+        serving_suggestions=result.get("serving_suggestions", []),
+        language=result.get("language", language),
+        personalized=personalized,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Application Setup
 # ---------------------------------------------------------------------------
@@ -184,14 +242,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    allowed_origins = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
-    ],
+        "https://*.vercel.app",
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app" if not allowed_origins_env else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -301,24 +367,71 @@ async def generate_recipe(
             recipe_name=result.get("recipe_name", ""),
         )
 
-    nutrition_data = result.get("nutrition", {})
-    return RecipeResponse(
-        recipe_name=result.get("recipe_name", ""),
-        description=result.get("description", ""),
-        image_url=result.get("image_url", ""),
-        ingredients=result.get("ingredients", []),
-        missing_ingredients=result.get("missing_ingredients", []),
-        missing_ingredient_suggestions=result.get(
-            "missing_ingredient_suggestions", []
-        ),
-        shopping_list=result.get("shopping_list", []),
-        nutrition=NutritionInfo(**nutrition_data),
-        instructions=result.get("instructions", []),
-        tips=result.get("tips", []),
-        serving_suggestions=result.get("serving_suggestions", []),
-        language=result.get("language", request.language),
-        personalized=bool(user),
+    return _to_recipe_response(result, request.language, bool(user))
+
+
+@app.post("/search-recipe", response_model=RecipeResponse, tags=["Recipe"])
+async def search_recipe(
+    request: RecipeSearchRequest,
+    user: dict | None = Depends(get_optional_user),
+) -> RecipeResponse:
+    """
+    Look up a recipe directly by dish name (e.g. poori sagu, biryani).
+
+    Workflow:
+      Recipe Lookup -> Parallel (Nutrition + Cooking + Image)
+    """
+    user_memory = None
+    if user:
+        user_memory = get_user_memory(user["id"])
+        logger.info("Using agent memory for user %s", user["username"])
+
+    logger.info(
+        "Recipe search: query=%s, cuisine=%s, diet=%s, lang=%s, auth=%s",
+        request.query,
+        request.cuisine,
+        request.diet,
+        request.language,
+        bool(user),
     )
+
+    try:
+        result: dict[str, Any] = run_recipe_search_workflow(
+            recipe_query=request.query,
+            cuisine=request.cuisine,
+            diet=request.diet,
+            cooking_time=request.cooking_time,
+            language=request.language,
+            user_memory=user_memory,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Recipe search failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Recipe search failed: {exc}",
+        ) from exc
+
+    if result.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=result["error"],
+        )
+
+    if user:
+        update_user_memory(
+            user["id"],
+            cuisine=request.cuisine,
+            diet=request.diet,
+            language=request.language,
+            recipe_name=result.get("recipe_name", request.query),
+        )
+
+    return _to_recipe_response(result, request.language, bool(user))
 
 
 @app.post("/translate-recipe", response_model=TranslateResponse, tags=["Recipe"])

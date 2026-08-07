@@ -71,6 +71,7 @@ class RecipeState(TypedDict, total=False):
     """Shared state passed between all agents in the LangGraph workflow."""
 
     ingredients: str
+    recipe_query: str
     cuisine: str
     diet: str
     cooking_time: str
@@ -298,6 +299,62 @@ Select the best recipe and identify missing ingredients.{_cuisine_guidance(state
         }
     except Exception as exc:
         return {"error": f"Recipe Finder failed: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Recipe Lookup Agent (direct search by dish name)
+# ---------------------------------------------------------------------------
+
+RECIPE_LOOKUP_PROMPT = """You are the Recipe Lookup Agent for RecipeGenAI.
+
+The user searched for a specific dish by name and wants the full authentic recipe.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "recipe_name": "Official dish name",
+  "recipe_description": "2-3 sentence appetizing description",
+  "required_ingredients": ["all ingredients with quantities"],
+  "missing_ingredients": [],
+  "missing_ingredient_suggestions": [],
+  "shopping_list": ["organized shopping list for this recipe"]
+}
+
+Provide a complete, accurate, home-cook-friendly recipe for the requested dish.
+missing_ingredients should always be an empty list for direct recipe lookups."""
+
+
+def recipe_lookup_agent(state: RecipeState) -> RecipeState:
+    """Look up and return a full recipe for a dish searched by name."""
+    lang = state.get("language", "en")
+    memory_ctx = format_memory_for_prompt(state.get("user_memory"))
+    query = state.get("recipe_query", "").strip()
+
+    if not query:
+        return {"error": "Recipe search query cannot be empty"}
+
+    user_prompt = f"""Recipe search query: {query}
+Cuisine preference: {state.get('cuisine', 'Any')}
+Dietary preference: {state.get('diet', 'Any')}
+Maximum cooking time: {state.get('cooking_time', '30')} minutes
+
+{memory_ctx}
+
+Return the complete recipe for "{query}".{_cuisine_guidance(state.get('cuisine', ''))}{_lang_instruction(lang)}"""
+
+    try:
+        result = _invoke_agent(RECIPE_LOOKUP_PROMPT, user_prompt)
+        return {
+            "recipe_name": result.get("recipe_name", query),
+            "recipe_description": result.get("recipe_description", ""),
+            "required_ingredients": result.get("required_ingredients", []),
+            "missing_ingredients": result.get("missing_ingredients", []),
+            "missing_ingredient_suggestions": result.get(
+                "missing_ingredient_suggestions", []
+            ),
+            "shopping_list": result.get("shopping_list", []),
+        }
+    except Exception as exc:
+        return {"error": f"Recipe Lookup failed: {exc}"}
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +609,7 @@ def create_recipe_workflow() -> StateGraph:
 
 
 _recipe_graph = None
+_recipe_search_graph = None
 
 
 def get_recipe_graph():
@@ -560,6 +618,35 @@ def get_recipe_graph():
     if _recipe_graph is None:
         _recipe_graph = create_recipe_workflow()
     return _recipe_graph
+
+
+def create_recipe_search_workflow() -> StateGraph:
+    """
+    Build workflow for direct recipe search by dish name.
+
+    Flow:
+      START -> Recipe Lookup -> Parallel (Nutrition + Cooking + Image) -> Build Response -> END
+    """
+    workflow = StateGraph(RecipeState)
+
+    workflow.add_node("recipe_lookup", recipe_lookup_agent)
+    workflow.add_node("parallel_agents", parallel_agents_node)
+    workflow.add_node("build_response", build_final_response)
+
+    workflow.add_edge(START, "recipe_lookup")
+    workflow.add_edge("recipe_lookup", "parallel_agents")
+    workflow.add_edge("parallel_agents", "build_response")
+    workflow.add_edge("build_response", END)
+
+    return workflow.compile()
+
+
+def get_recipe_search_graph():
+    """Return the compiled recipe search workflow (lazy singleton)."""
+    global _recipe_search_graph
+    if _recipe_search_graph is None:
+        _recipe_search_graph = create_recipe_search_workflow()
+    return _recipe_search_graph
 
 
 def run_recipe_workflow(
@@ -594,6 +681,42 @@ def run_recipe_workflow(
     }
 
     graph = get_recipe_graph()
+    result = graph.invoke(initial_state)
+    return result.get("final_response", {})
+
+
+def run_recipe_search_workflow(
+    recipe_query: str,
+    cuisine: str = "South Indian",
+    diet: str = "Vegetarian",
+    cooking_time: str = "30",
+    language: str = "en",
+    user_memory: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Execute the recipe search workflow for a dish looked up by name.
+
+    Args:
+        recipe_query: Dish name to search (e.g. "poori sagu").
+        cuisine: Preferred cuisine type.
+        diet: Dietary preference.
+        cooking_time: Maximum cooking time in minutes.
+        language: Response language code ('en' or 'kn').
+        user_memory: Optional personalized preferences from agent memory.
+
+    Returns:
+        Final structured recipe response dictionary.
+    """
+    initial_state: RecipeState = {
+        "recipe_query": recipe_query.strip(),
+        "cuisine": cuisine.strip(),
+        "diet": diet.strip(),
+        "cooking_time": str(cooking_time).strip(),
+        "language": language if language in LANGUAGE_NAMES else "en",
+        "user_memory": user_memory or {},
+    }
+
+    graph = get_recipe_search_graph()
     result = graph.invoke(initial_state)
     return result.get("final_response", {})
 

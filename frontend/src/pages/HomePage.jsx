@@ -6,7 +6,8 @@ import ErrorAlert from '../components/ErrorAlert'
 import RecipeHistory from '../components/RecipeHistory'
 import { useAuth } from '../context/AuthContext'
 import { useLanguage } from '../context/LanguageContext'
-import { generateRecipe } from '../services/api'
+import { generateRecipe, searchRecipe } from '../services/api'
+import RecipeSearchBar from '../components/RecipeSearchBar'
 import {
   saveRecipe,
   getSavedRecipes,
@@ -30,6 +31,7 @@ export default function HomePage({ activeTab, onTabChange }) {
   })
   const [recipe, setRecipe] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loadingMode, setLoadingMode] = useState('generate')
   const [error, setError] = useState(null)
   const [savedRecipes, setSavedRecipes] = useState(getSavedRecipes)
   const [history, setHistory] = useState(getRecipeHistory)
@@ -37,6 +39,7 @@ export default function HomePage({ activeTab, onTabChange }) {
 
   const handleGenerate = async () => {
     setLoading(true)
+    setLoadingMode('generate')
     setError(null)
     setRecipe(null)
     setIsSaved(false)
@@ -53,6 +56,37 @@ export default function HomePage({ activeTab, onTabChange }) {
         err.response?.data?.detail ||
         err.message ||
         'Failed to generate recipe. Please try again.'
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSearch = async (query, preferences) => {
+    setLoading(true)
+    setLoadingMode('search')
+    setError(null)
+    setRecipe(null)
+    setIsSaved(false)
+
+    try {
+      const payload = {
+        query,
+        cuisine: preferences.cuisine,
+        diet: preferences.diet,
+        cooking_time: preferences.cooking_time,
+        language,
+      }
+      const result = await searchRecipe(payload, token)
+      setRecipe(result)
+      addToHistory(result)
+      setHistory(getRecipeHistory())
+      if (token) refreshMemory()
+    } catch (err) {
+      const detail =
+        err.response?.data?.detail ||
+        err.message ||
+        'Failed to find recipe. Please try again.'
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail))
     } finally {
       setLoading(false)
@@ -109,6 +143,20 @@ export default function HomePage({ activeTab, onTabChange }) {
 
   return (
     <div className="space-y-8">
+      <RecipeSearchBar
+        onSearch={handleSearch}
+        loading={loading}
+        preferences={formData}
+      />
+
+      <div className="flex items-center gap-4">
+        <div className="flex-1 h-px bg-stone-200" />
+        <span className="text-sm font-medium text-muted uppercase tracking-wide">
+          {t('orDivider')}
+        </span>
+        <div className="flex-1 h-px bg-stone-200" />
+      </div>
+
       <RecipeForm
         formData={formData}
         onChange={setFormData}
@@ -118,7 +166,7 @@ export default function HomePage({ activeTab, onTabChange }) {
 
       <ErrorAlert message={error} onDismiss={() => setError(null)} title={t('errorTitle')} />
 
-      {loading && <LoadingSpinner />}
+      {loading && <LoadingSpinner mode={loadingMode} />}
 
       {!loading && recipe && (
         <RecipeResult
