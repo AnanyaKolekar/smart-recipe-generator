@@ -2,6 +2,8 @@
 
 Modern React + Vite frontend for the multi-agent recipe recommendation system.
 
+🚀 **Live App**: [https://smart-recipe-generator-henna.vercel.app/](https://smart-recipe-generator-henna.vercel.app/)
+
 ## Quick Start
 
 ```bash

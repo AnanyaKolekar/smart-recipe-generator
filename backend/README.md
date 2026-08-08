@@ -2,6 +2,9 @@
 
 FastAPI backend with LangGraph multi-agent pipeline powered by Groq.
 
+⚡ **Live API**: [https://smart-recipe-generator-3pkq.onrender.com](https://smart-recipe-generator-3pkq.onrender.com)  
+📖 **Live Docs**: [https://smart-recipe-generator-3pkq.onrender.com/docs](https://smart-recipe-generator-3pkq.onrender.com/docs)
+
 ## Quick Start
 
 ```bash

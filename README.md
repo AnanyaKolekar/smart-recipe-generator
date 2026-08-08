@@ -2,6 +2,9 @@
 
 A production-ready, end-to-end AI application where **4 specialized agents** collaborate via **LangGraph** to generate personalized recipes from your available ingredients and preferences.
 
+🚀 **Live Demo**: [https://smart-recipe-generator-henna.vercel.app/](https://smart-recipe-generator-henna.vercel.app/)  
+⚡ **Live Backend API**: [https://smart-recipe-generator-3pkq.onrender.com](https://smart-recipe-generator-3pkq.onrender.com)
+
 ---
 
 ## Project Overview
